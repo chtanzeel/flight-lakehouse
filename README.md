@@ -43,16 +43,19 @@ flowchart LR
 
 ## Results
 
-Full run on the real 3M-row dataset (US flights, January to June 2001 plus six rows on 1 July), on a 2-core, 8 GB machine:
+Full run on the real 3M-row dataset (US flights, January to June 2001 plus six rows on 1 July):
 
-| Stage | Rows out | Time |
-| --- | --- | --- |
-| Bronze | 3,000,000 flights, 3,376 airports | 11 s |
-| Silver | 2,999,989 valid, 11 quarantined (all `delay_within_bounds`) | 26 s |
-| Gold | 19,497 route-months, 39,952 airport-days, 24 hours, 312 state-months | 21 s |
+| Stage | Rows out | Linux, Parquet (2 cores) | Windows, Delta Lake |
+| --- | --- | --- | --- |
+| Bronze | 3,000,000 flights, 3,376 airports | 11 s | 32 s |
+| Silver | 2,999,989 valid, 11 quarantined (all `delay_within_bounds`) | 26 s | 30 s |
+| Gold | 19,497 route-months, 39,952 airport-days, 24 hours, 312 state-months | 21 s | 24 s |
 
-Row counts reconcile exactly (2,999,989 + 11 = 3,000,000), and the gold tables were cross-checked
-against an independent pandas calculation on the raw file.
+Both runs produced identical row counts in every table. Counts reconcile exactly
+(2,999,989 + 11 = 3,000,000), and the gold tables were cross-checked against an independent pandas
+calculation on the raw file.
+
+![Share of flights 15+ minutes late by hour of departure](docs/hourly_delay_profile.png)
 
 A few things the gold layer shows:
 
@@ -73,6 +76,18 @@ cd flight-lakehouse
 make setup     # virtualenv + dependencies
 make run       # download the data, then run bronze -> silver -> gold
 ```
+
+On Windows (PowerShell), where `make` is usually not installed:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\pip install -e ".[dev]"
+.venv\Scripts\python -m flight_lakehouse.ingest
+.venv\Scripts\python -m flight_lakehouse.pipeline
+```
+
+Spark on Windows may print `Failed to delete ... spark-*` errors at shutdown. They come from Windows
+file locks on Spark's temp folder after the run has finished, and do not affect the output.
 
 Output lands in `data/lake/<layer>/<table>`. The run prints a JSON summary with per-stage row counts
 and timings. To inspect a table:
@@ -130,6 +145,8 @@ make test         # 26 tests on Parquet tables, no extra downloads
 make test-delta   # the same suite on Delta Lake tables
 make lint
 ```
+
+On Windows: `$env:TEST_TABLE_FORMAT = "delta"; .venv\Scripts\pytest`.
 
 The tests use small hand-checked datasets: quality rules (including NULL handling and multi-rule
 failures), silver cleaning and enrichment, gold calculations with known answers, and pipeline
